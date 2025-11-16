@@ -6,8 +6,7 @@ import dagshub
 from pathlib import Path
 from sklearn.model_selection import cross_val_score
 from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.compose import TransformedTargetRegressor
-from pathlib import Path
+import json
 import tempfile
 
 # initialize dagshub
@@ -57,6 +56,16 @@ def make_X_and_y(data:pd.DataFrame, target_column: str):
 def load_model(model_path: Path):
     model = joblib.load(model_path)
     return model
+
+
+def save_model_info(save_json_path,run_id, artifact_path, model_name):
+    info_dict = {
+        "run_id": run_id,
+        "artifact_path": artifact_path,
+        "model_name": model_name
+    }
+    with open(save_json_path,"w") as f:
+        json.dump(info_dict,f,indent=4)
 
 
 if __name__ == "__main__":
@@ -114,7 +123,7 @@ if __name__ == "__main__":
     mean_cv_score = -(cv_scores.mean())
     
     # log with mlflow
-    with mlflow.start_run():
+    with mlflow.start_run() as run:
         # set tags
         mlflow.set_tag("model","Food Delivery Time Regressor")
 
@@ -143,14 +152,38 @@ if __name__ == "__main__":
         model_signature = mlflow.models.infer_signature(model_input=X_train.sample(20,random_state=42),
                                     model_output=model.predict(X_train.sample(20,random_state=42)))
         
-        # log the stacking regressor
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model_path = Path(tmp_dir) / "model"
-            mlflow.sklearn.save_model(model, model_path, signature=model_signature)
-            mlflow.log_artifacts(model_path, artifact_path="model")
+        # log the final model
+        mlflow.sklearn.log_model(model,"delivery_time_pred_model",signature=model_signature)
 
-       
+        # log the final model using save_model + log_artifacts
+        
+        # with tempfile.TemporaryDirectory() as tmp_dir:
+        #     temp_model_path = Path(tmp_dir) / "delivery_time_pred_model"
+        #     mlflow.sklearn.save_model(model, temp_model_path, signature=model_signature)
+        #     mlflow.log_artifacts(temp_model_path, artifact_path="delivery_time_pred_model")
 
-
+        # log stacking regressor
+        mlflow.log_artifact(root_path / "models" / "stacking_regressor.joblib")
+        
+        # log the power transformer
+        mlflow.log_artifact(root_path / "models" / "power_transformer.joblib")
+        
+        # log the preprocessor
+        mlflow.log_artifact(root_path / "models" / "preprocessor.joblib")
+        
+        # get the current run artifact uri
+        artifact_uri = mlflow.get_artifact_uri()
         
         logger.info("Mlflow logging complete and model logged")
+        
+    # get the run id 
+    run_id = run.info.run_id
+    model_name = "delivery_time_pred_model"
+    
+    # save the model info
+    save_json_path = root_path / "run_information.json"
+    save_model_info(save_json_path=save_json_path,
+                    run_id=run_id,
+                    artifact_path=artifact_uri,
+                    model_name=model_name)
+    logger.info("Model Information saved")

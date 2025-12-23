@@ -1,4 +1,4 @@
-Swiggy-Delivery-Time_Prediction
+Swiggy-Delivery-Time-Prediction
 ==============================
 
 Build ML model that predicts food delivery time in minutes
